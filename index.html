@@ -1,3 +1,4 @@
+<!-- index.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -197,10 +198,28 @@
     function updateOnScroll() {
       const hdr = document.getElementById('controls').offsetHeight;
       let currentTitle = null;
+      // Detectar capítulo visible
       document.querySelectorAll('.chapter-title').forEach(title => {
         const r = title.getBoundingClientRect();
         if (r.top <= hdr + 5) currentTitle = title;
       });
+      if (currentTitle) {
+        const cont = currentTitle.parentElement;
+        const b = parseInt(cont.dataset.book, 10);
+        const c = parseInt(cont.dataset.chap, 10);
+        updateSelectors(b, c);
+        fillVerses(b, c);
+        // Actualizar selector de versículo según el primer versículo visible
+        const verses = Array.from(cont.querySelectorAll('[data-verse]'));
+        for (let vEl of verses) {
+          const vr = vEl.getBoundingClientRect();
+          if (vr.top >= hdr + 5) {
+            vs.value = vEl.dataset.verse;
+            break;
+          }
+        }
+      }
+    });
       if (currentTitle) {
         const cont = currentTitle.parentElement;
         const b = parseInt(cont.dataset.book);
