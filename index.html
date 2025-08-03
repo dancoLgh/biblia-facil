@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>Biblia Offline - Tercera Edad</title>
+  <style>
+    :root { --font-size: 1.5rem; }
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      font-size: var(--font-size);
+      font-family: sans-serif;
+      padding-top: 4.5rem; /* espacio por header fijo */
+    }
+    #controls {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem;
+      background: #111;
+      z-index: 100;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+      overflow-x: auto;
+    }
+    #controls button,
+    #controls select,
+    #controls input {
+      font-size: 1.2rem;
+      padding: 0.4rem;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 0.5rem;
+    }
+    #searchBook { width: 8rem; }
+    #verseSelect { min-width: 6rem; }
+    #content {
+      padding: 1rem;
+      line-height: 1.6;
+      overflow-y: auto;
+      height: calc(100vh - 4.5rem);
+    }
+    #content v,
+    #content h2 {
+      display: block;
+      margin-bottom: 1rem;
+    }
+    .verse-num {
+      background: #444;
+      padding: 0.2em 0.5em;
+      border-radius: 0.2em;
+      margin-right: 0.5em;
+    }
+    h2.chapter-title {
+      margin: 1rem 0 0.5rem;
+      font-size: 1.5rem;
+      text-align: center;
+      background: #333;
+      padding: 0.5rem;
+      border-radius: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <button id="decrease" aria-label="Disminuir tamaño de letra">A-</button>
+    <button id="increase" aria-label="Aumentar tamaño de letra">A+</button>
+    <input type="text" id="searchBook" placeholder="Buscar libro..." aria-label="Buscar libro">
+    <select id="bookSelect" aria-label="Seleccionar libro"></select>
+    <select id="chapterSelect" aria-label="Seleccionar capítulo"></select>
+    <select id="verseSelect" aria-label="Seleccionar versículo"></select>
+  </div>
+  <div id="content" role="main" tabindex="0"></div>
+
+  <script>
+    // Persistencia de tamaño de letra
+    const savedSize = localStorage.getItem('fontSize');
+    if (savedSize) {
+      document.documentElement.style.setProperty('--font-size', savedSize);
+    }
+    // Service Worker
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js').catch(console.error);
+    }
+
+    const parser = new DOMParser();
+    let xmlDoc;
+    let lowest, highest;
+
+    const contentDiv = document.getElementById('content');
+    const bs = document.getElementById('bookSelect');
+    const cs = document.getElementById('chapterSelect');
+    const vs = document.getElementById('verseSelect');
+    const sb = document.getElementById('searchBook');
+
+    // Utilidades de navegación
+    function getBooks() {
+      return Array.from(xmlDoc.getElementsByTagName('b'));
+    }
+    function getChapterCount(bookIdx) {
+      return getBooks()[bookIdx].getElementsByTagName('c').length;
+    }
+    function getNext(bookIdx, chapIdx) {
+      if (chapIdx + 1 < getChapterCount(bookIdx)) {
+        return {bookIdx, chapIdx: chapIdx + 1};
+      }
+      if (bookIdx + 1 < getBooks().length) {
+        return {bookIdx: bookIdx + 1, chapIdx: 0};
+      }
+      return null;
+    }
+    function getPrev(bookIdx, chapIdx) {
+      if (chapIdx > 0) {
+        return {bookIdx, chapIdx: chapIdx - 1};
+      }
+      if (bookIdx > 0) {
+        const prevBook = bookIdx - 1;
+        return {bookIdx: prevBook, chapIdx: getChapterCount(prevBook) - 1};
+      }
+      return null;
+    }
+
+    // Crear DOM de capítulo
+    function createChapterElement(pos) {
+      const {bookIdx, chapIdx} = pos;
+      const container = document.createElement('div');
+      container.dataset.book = bookIdx;
+      container.dataset.chap = chapIdx;
+      // Título
+      const bookName = getBooks()[bookIdx].getAttribute('n');
+      const title = document.createElement('h2');
+      title.className = 'chapter-title';
+      title.textContent = `${bookName} - Capítulo ${chapIdx + 1}`;
+      container.append(title);
+      // Versículos
+      const verses = getBooks()[bookIdx]
+        .getElementsByTagName('c')[chapIdx]
+        .getElementsByTagName('v');
+      Array.from(verses).forEach(v => {
+        const num = v.getAttribute('n');
+        const p = document.createElement('v');
+        p.dataset.verse = num;
+        p.innerHTML = `<span class="verse-num">${num}</span>${v.textContent}`;
+        container.append(p);
+      });
+      return container;
+    }
+
+    function appendChapter(pos) {
+      const el = createChapterElement(pos);
+      contentDiv.append(el);
+      highest = pos;
+    }
+    function prependChapter(pos) {
+      const el = createChapterElement(pos);
+      const prevHeight = contentDiv.scrollHeight;
+      contentDiv.prepend(el);
+      contentDiv.scrollTop += contentDiv.scrollHeight - prevHeight;
+      lowest = pos;
+    }
+
+    // Inicializar buffer
+    function initBuffer(b, c) {
+      contentDiv.innerHTML = '';
+      lowest = highest = {bookIdx: b, chapIdx: c};
+      appendChapter(highest);
+      updateSelectors(b, c);
+      fillVerses(b, c);
+    }
+
+    // Scroll infinito y sincronización
+    contentDiv.addEventListener('scroll', () => {
+      const st = contentDiv.scrollTop;
+      const ch = contentDiv.clientHeight;
+      const sh = contentDiv.scrollHeight;
+      if (st + ch >= sh - 10) {
+        const n = getNext(highest.bookIdx, highest.chapIdx);
+        if (n) appendChapter(n);
+      }
+      if (st <= 10) {
+        const p = getPrev(lowest.bookIdx, lowest.chapIdx);
+        if (p) prependChapter(p);
+      }
+      updateOnScroll();
+    });
+
+    function updateOnScroll() {
+      const hdr = document.getElementById('controls').offsetHeight;
+      let currentTitle = null;
+      document.querySelectorAll('.chapter-title').forEach(title => {
+        const r = title.getBoundingClientRect();
+        if (r.top <= hdr + 5) currentTitle = title;
+      });
+      if (currentTitle) {
+        const cont = currentTitle.parentElement;
+        const b = parseInt(cont.dataset.book);
+        const c = parseInt(cont.dataset.chap);
+        updateSelectors(b, c);
+        fillVerses(b, c);
+      }
+    }
+
+    function updateSelectors(b, c) {
+      bs.value = b;
+      cs.value = c;
+    }
+
+    // Fill selectores
+    function fillBooks() {
+      const filter = sb.value.toLowerCase();
+      bs.innerHTML = '';
+      getBooks().forEach((b, i) => {
+        const name = b.getAttribute('n').toLowerCase();
+        if (name.includes(filter)) {
+          const o = document.createElement('option');
+          o.value = i;
+          o.textContent = b.getAttribute('n');
+          bs.append(o);
+        }
+      });
+      fillChapters();
+    }
+    function fillChapters() {
+      cs.innerHTML = '';
+      const b = parseInt(bs.value);
+      const chapters = getBooks()[b].getElementsByTagName('c');
+      Array.from(chapters).forEach((cEl, idx) => {
+        const o = document.createElement('option');
+        o.value = idx;
+        o.textContent = 'Capítulo ' + (idx + 1);
+        cs.append(o);
+      });
+    }
+    function fillVerses(b, c) {
+      vs.innerHTML = '';
+      const verses = getBooks()[b]
+        .getElementsByTagName('c')[c]
+        .getElementsByTagName('v');
+      Array.from(verses).forEach(vEl => {
+        const n = vEl.getAttribute('n');
+        const o = document.createElement('option');
+        o.value = n;
+        o.textContent = 'Versículo ' + n;
+        vs.append(o);
+      });
+    }
+
+    // Listeners
+    sb.addEventListener('input', fillBooks);
+    bs.addEventListener('change', () => {
+      fillChapters();
+      initBuffer(parseInt(bs.value), parseInt(cs.value));
+    });
+    cs.addEventListener('change', () => initBuffer(parseInt(bs.value), parseInt(cs.value)));
+    vs.addEventListener('change', () => {
+      const v = vs.value;
+      const el = document.querySelector(`[data-verse="${v}"]`);
+      if (el) {
+        const hdrH = document.getElementById('controls').offsetHeight;
+        contentDiv.scrollTop = el.offsetTop - hdrH - 10;
+      }
+    });
+
+    // Carga inicial
+    fetch('bible.xml')
+      .then(r => r.text())
+      .then(t => {
+        xmlDoc = parser.parseFromString(t, 'application/xml');
+        fillBooks();
+        initBuffer(0, 0);
+      })
+      .catch(err => {
+        console.error(err);
+        contentDiv.innerHTML = '<p>Error al cargar bible.xml</p>';
+      });
+
+    // Control de tamaño de letra
+    document.getElementById('increase').addEventListener('click', () => {
+      let s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size'));
+      s += 0.3;
+      document.documentElement.style.setProperty('--font-size', s + 'rem');
+      localStorage.setItem('fontSize', s + 'rem');
+    });
+    document.getElementById('decrease').addEventListener('click', () => {
+      let s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size'));
+      s = Math.max(1, s - 0.3);
+      document.documentElement.style.setProperty('--font-size', s + 'rem');
+      localStorage.setItem('fontSize', s + 'rem');
+    });
+  </script>
+</body>
+</html>
