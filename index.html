@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <title>Biblia Offline - Tercera Edad</title>
   <style>
-    :root { --font-size: 1.5rem; }
+    :root { --font-size: 1.5rem; --control-size: 1.4rem; }
     body {
       margin: 0;
       padding: 0;
@@ -19,7 +19,6 @@
       color: #fff;
       font-size: var(--font-size);
       font-family: sans-serif;
-      padding-top: 6rem; /* espacio por header fijo */
     }
     #controls {
       position: fixed;
@@ -31,26 +30,36 @@
       background: #111;
       z-index: 100;
       box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-      overflow-x: auto;
+      flex-wrap: wrap;
+      overflow-x: hidden;
     }
     #controls button,
-    #controls select,
-    #controls input {
-      font-size: 1.4rem;
+    #controls select {
+      font-size: var(--control-size);
       padding: 0.6rem;
       background: #222;
       color: #fff;
       border: 1px solid #444;
       border-radius: 0.5rem;
     }
-    #searchBook { width: 8rem; }
     #verseSelect { min-width: 6rem; }
     #content {
       padding: 1rem;
       line-height: 1.6;
       overflow-y: auto;
-      height: calc(100vh - 6rem);
     }
+    #settings {
+      position: fixed;
+      top: 0; right: 0;
+      background: #111;
+      padding: 1rem;
+      display: none;
+      flex-direction: column;
+      gap: 0.5rem;
+      z-index: 200;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    }
+    #settings.show { display: flex; }
     #content v,
     #content h2 {
       display: block;
@@ -74,12 +83,16 @@
 </head>
 <body>
   <div id="controls">
-    <button id="decrease" aria-label="Disminuir tamaño de letra">A-</button>
-    <button id="increase" aria-label="Aumentar tamaño de letra">A+</button>
-    <input type="text" id="searchBook" placeholder="Buscar libro..." aria-label="Buscar libro">
+    <button id="menuToggle" aria-label="Menú">☰</button>
     <select id="bookSelect" aria-label="Seleccionar libro"></select>
     <select id="chapterSelect" aria-label="Seleccionar capítulo"></select>
     <select id="verseSelect" aria-label="Seleccionar versículo"></select>
+  </div>
+  <div id="settings" aria-label="Configuraciones">
+    <button id="decrease" aria-label="Disminuir tamaño de letra">A-</button>
+    <button id="increase" aria-label="Aumentar tamaño de letra">A+</button>
+    <button id="hdrDown" aria-label="Disminuir tamaño del encabezado">H-</button>
+    <button id="hdrUp" aria-label="Aumentar tamaño del encabezado">H+</button>
   </div>
   <div id="content" role="main" tabindex="0"></div>
 
@@ -88,6 +101,10 @@
     const savedSize = localStorage.getItem('fontSize');
     if (savedSize) {
       document.documentElement.style.setProperty('--font-size', savedSize);
+    }
+    const savedCtrl = localStorage.getItem('controlSize');
+    if (savedCtrl) {
+      document.documentElement.style.setProperty('--control-size', savedCtrl);
     }
     // Service Worker
     if ('serviceWorker' in navigator) {
@@ -102,7 +119,17 @@
     const bs = document.getElementById('bookSelect');
     const cs = document.getElementById('chapterSelect');
     const vs = document.getElementById('verseSelect');
-    const sb = document.getElementById('searchBook');
+    const settings = document.getElementById('settings');
+
+    function adjustLayout() {
+      const h = document.getElementById('controls').offsetHeight;
+      document.body.style.paddingTop = h + 'px';
+      contentDiv.style.height = `calc(100vh - ${h}px)`;
+    }
+    window.addEventListener('resize', adjustLayout);
+    document.getElementById('menuToggle').addEventListener('click', () => {
+      settings.classList.toggle('show');
+    });
 
     // Utilidades de navegación
     function getBooks() {
@@ -177,6 +204,7 @@
       appendChapter(highest);
       updateSelectors(b, c);
       fillVerses(b, c);
+      adjustLayout();
     }
 
     // Scroll infinito y sincronización
@@ -218,6 +246,7 @@
           break;
         }
       }
+      updateURL(b, c, vs.value);
     }
     }
 
@@ -226,18 +255,22 @@
       cs.value = c;
     }
 
+    function updateURL(b, c, v) {
+      const params = new URLSearchParams();
+      params.set('book', getBooks()[b].getAttribute('n'));
+      params.set('chapter', c + 1);
+      if (v) params.set('verse', v);
+      history.replaceState(null, '', '?' + params.toString());
+    }
+
     // Fill selectores
     function fillBooks() {
-      const filter = sb.value.toLowerCase();
       bs.innerHTML = '';
       getBooks().forEach((b, i) => {
-        const name = b.getAttribute('n').toLowerCase();
-        if (name.includes(filter)) {
-          const o = document.createElement('option');
-          o.value = i;
-          o.textContent = b.getAttribute('n');
-          bs.append(o);
-        }
+        const o = document.createElement('option');
+        o.value = i;
+        o.textContent = b.getAttribute('n');
+        bs.append(o);
       });
       fillChapters();
     }
@@ -267,12 +300,15 @@
     }
 
     // Listeners
-    sb.addEventListener('input', fillBooks);
     bs.addEventListener('change', () => {
       fillChapters();
       initBuffer(parseInt(bs.value), parseInt(cs.value));
+      updateURL(parseInt(bs.value), parseInt(cs.value), vs.value);
     });
-    cs.addEventListener('change', () => initBuffer(parseInt(bs.value), parseInt(cs.value)));
+    cs.addEventListener('change', () => {
+      initBuffer(parseInt(bs.value), parseInt(cs.value));
+      updateURL(parseInt(bs.value), parseInt(cs.value), vs.value);
+    });
     vs.addEventListener('change', () => {
       const v = vs.value;
       const el = document.querySelector(`[data-verse="${v}"]`);
@@ -280,6 +316,7 @@
         const hdrH = document.getElementById('controls').offsetHeight;
         contentDiv.scrollTop = el.offsetTop - hdrH - 10;
       }
+      updateURL(parseInt(bs.value), parseInt(cs.value), v);
     });
 
     // Carga inicial
@@ -288,7 +325,30 @@
       .then(t => {
         xmlDoc = parser.parseFromString(t, 'application/xml');
         fillBooks();
-        initBuffer(0, 0);
+        const params = new URLSearchParams(location.search);
+        let bi = 0, ci = 0;
+        if (params.has('book')) {
+          const name = params.get('book').toLowerCase();
+          const idx = getBooks().findIndex(b => b.getAttribute('n').toLowerCase() === name);
+          if (idx >= 0) bi = idx;
+        }
+        if (params.has('chapter')) {
+          ci = Math.max(0, parseInt(params.get('chapter'), 10) - 1);
+        }
+        initBuffer(bi, ci);
+        if (params.has('verse')) {
+          const vv = params.get('verse');
+          vs.value = vv;
+          setTimeout(() => {
+            const el = document.querySelector(`[data-verse="${vv}"]`);
+            if (el) {
+              const hdrH = document.getElementById('controls').offsetHeight;
+              contentDiv.scrollTop = el.offsetTop - hdrH - 10;
+            }
+          }, 100);
+        }
+        adjustLayout();
+        updateURL(parseInt(bs.value), parseInt(cs.value), vs.value);
       })
       .catch(err => {
         console.error(err);
@@ -307,6 +367,20 @@
       s = Math.max(1, s - 0.3);
       document.documentElement.style.setProperty('--font-size', s + 'rem');
       localStorage.setItem('fontSize', s + 'rem');
+    });
+    document.getElementById('hdrUp').addEventListener('click', () => {
+      let s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control-size'));
+      s += 0.3;
+      document.documentElement.style.setProperty('--control-size', s + 'rem');
+      localStorage.setItem('controlSize', s + 'rem');
+      adjustLayout();
+    });
+    document.getElementById('hdrDown').addEventListener('click', () => {
+      let s = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control-size'));
+      s = Math.max(1, s - 0.3);
+      document.documentElement.style.setProperty('--control-size', s + 'rem');
+      localStorage.setItem('controlSize', s + 'rem');
+      adjustLayout();
     });
   </script>
 </body>
