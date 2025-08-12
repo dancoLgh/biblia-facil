@@ -1,4 +1,5 @@
-const CACHE_NAME = 'biblia-app-v3';
+
+const CACHE_NAME = 'biblia-app-v4';
 const urlsToCache = [
   '/',
   '/index.html',

@@ -12,15 +12,35 @@ document.addEventListener('DOMContentLoaded', () => {
   recognition.lang = 'es-ES';
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
+  const status = document.getElementById('voiceStatus');
+
 
   btn.addEventListener('click', () => {
     recognition.start();
   });
 
+  recognition.addEventListener('start', () => {
+    btn.classList.add('listening');
+    status.textContent = 'Escuchando...';
+  });
+
+  recognition.addEventListener('end', () => {
+    btn.classList.remove('listening');
+    if (status.textContent === 'Escuchando...') {
+      status.textContent = '';
+    }
+  });
+
   recognition.addEventListener('result', (e) => {
+    status.textContent = 'Procesando...';
     const text = e.results[0][0].transcript.toLowerCase();
     handleCommand(text);
+    status.textContent = '';
   });
+
+  recognition.addEventListener('error', () => {
+    btn.classList.remove('listening');
+    status.textContent = '';
 
   function normalize(str) {
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
