@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   const status = document.getElementById('voiceStatus');
-
+  let processing = false;
 
   btn.addEventListener('click', () => {
     recognition.start();
@@ -26,21 +26,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   recognition.addEventListener('end', () => {
     btn.classList.remove('listening');
-    if (status.textContent === 'Escuchando...') {
-      status.textContent = '';
+    if (!processing) {
+      status.textContent = 'Escucha detenida';
+      setTimeout(() => (status.textContent = ''), 1000);
     }
   });
 
   recognition.addEventListener('result', (e) => {
+    processing = true;
     status.textContent = 'Procesando...';
     const text = e.results[0][0].transcript.toLowerCase();
     handleCommand(text);
-    status.textContent = '';
+    processing = false;
+    status.textContent = 'Escucha detenida';
+    setTimeout(() => (status.textContent = ''), 1000);
   });
 
   recognition.addEventListener('error', () => {
     btn.classList.remove('listening');
-    status.textContent = '';
+    processing = false;
+    status.textContent = 'Error';
+    setTimeout(() => (status.textContent = ''), 1000);
+  });
 
   function normalize(str) {
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
