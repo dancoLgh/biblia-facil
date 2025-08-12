@@ -1,4 +1,4 @@
-const CACHE_NAME = 'biblia-app-v2';
+const CACHE_NAME = 'biblia-app-v5';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -6,7 +6,8 @@ const urlsToCache = [
   '/service-worker.js',
   '/manifest.json',
   '/icon-192.png',
-  '/icon-512.png'
+  '/icon-512.png',
+  '/voice.js'
 ];
 
 self.addEventListener('install', event => {

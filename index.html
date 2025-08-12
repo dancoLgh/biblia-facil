@@ -42,6 +42,13 @@
       border: 1px solid #444;
       border-radius: 0.5rem;
     }
+    #voiceBtn.listening {
+      background: #a00;
+    }
+    #voiceStatus {
+      font-size: var(--control-size);
+      min-width: 6rem;
+    }
     #verseSelect { min-width: 6rem; }
     #content {
       padding: 1rem;
@@ -87,6 +94,8 @@
     <select id="bookSelect" aria-label="Seleccionar libro"></select>
     <select id="chapterSelect" aria-label="Seleccionar capítulo"></select>
     <select id="verseSelect" aria-label="Seleccionar versículo"></select>
+    <button id="voiceBtn" aria-label="Buscar por voz">🎤</button>
+    <span id="voiceStatus" aria-live="polite"></span>
   </div>
   <div id="settings" aria-label="Configuraciones">
     <button id="decrease" aria-label="Disminuir tamaño de letra">A-</button>
@@ -383,5 +392,6 @@
       adjustLayout();
     });
   </script>
+  <script src="voice.js"></script>
 </body>
 </html>
