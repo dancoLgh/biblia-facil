@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   recognition.maxAlternatives = 1;
   const status = document.getElementById('voiceStatus');
 
+
   btn.addEventListener('click', () => {
     recognition.start();
   });
@@ -40,7 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
   recognition.addEventListener('error', () => {
     btn.classList.remove('listening');
     status.textContent = '';
-  });
 
   function normalize(str) {
     return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
